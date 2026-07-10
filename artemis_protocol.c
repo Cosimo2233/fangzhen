@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -256,6 +257,40 @@ static bool parse_error_fields(const char *cursor, char *message, size_t message
     return false;
 }
 
+static int format_fixed6(char *buffer, size_t buffer_size, float value)
+{
+    float scaled_float;
+    int32_t scaled;
+    uint32_t magnitude;
+    uint32_t integer_part;
+    uint32_t fractional_part;
+    const char *sign = "";
+
+    if (!isfinite(value)) {
+        return -1;
+    }
+    scaled_float = value * 1000000.0f;
+    if ((scaled_float > (float) INT32_MAX) || (scaled_float < (float) INT32_MIN)) {
+        return -1;
+    }
+    scaled = (int32_t) (scaled_float >= 0.0f ? scaled_float + 0.5f : scaled_float - 0.5f);
+    if (scaled < 0) {
+        sign = "-";
+        magnitude = (uint32_t) -scaled;
+    } else {
+        magnitude = (uint32_t) scaled;
+    }
+    integer_part = magnitude / 1000000U;
+    fractional_part = magnitude % 1000000U;
+    return snprintf(
+        buffer,
+        buffer_size,
+        "%s%lu.%06lu",
+        sign,
+        (unsigned long) integer_part,
+        (unsigned long) fractional_part);
+}
+
 bool artemis_protocol_parse_response(const char *line, artemis_response_t *response)
 {
     const char *cursor = line;
@@ -289,13 +324,14 @@ bool artemis_protocol_parse_response(const char *line, artemis_response_t *respo
 
 int artemis_protocol_format_start(char *buffer, size_t buffer_size)
 {
-    return snprintf(
-        buffer,
-        buffer_size,
-        "START max_time_s=%.6g control_period_s=%.6g initial_progress_index=%lu\n",
-        (double) ARTEMIS_START_MAX_TIME_S,
-        (double) ARTEMIS_CONTROL_PERIOD_S,
-        (unsigned long) ARTEMIS_INITIAL_PROGRESS_INDEX);
+    static const char start_command[] =
+        "START max_time_s=120 control_period_s=0.02 initial_progress_index=0\n";
+
+    if (buffer_size < sizeof(start_command)) {
+        return (int) (sizeof(start_command) - 1U);
+    }
+    memcpy(buffer, start_command, sizeof(start_command));
+    return (int) (sizeof(start_command) - 1U);
 }
 
 int artemis_protocol_format_step(
@@ -303,16 +339,27 @@ int artemis_protocol_format_step(
     size_t buffer_size,
     const artemis_control_command_t *command)
 {
+    char left[24];
+    char right[24];
+    int left_length;
+    int right_length;
+
     if (command == NULL) {
+        return -1;
+    }
+    left_length = format_fixed6(left, sizeof(left), command->rear_left_target_speed);
+    right_length = format_fixed6(right, sizeof(right), command->rear_right_target_speed);
+    if ((left_length < 0) || ((size_t) left_length >= sizeof(left)) ||
+        (right_length < 0) || ((size_t) right_length >= sizeof(right))) {
         return -1;
     }
     return snprintf(
         buffer,
         buffer_size,
-        "STEP %lu %.6f %.6f\n",
+        "STEP seq=%lu left=%s right=%s\n",
         (unsigned long) command->sequence_id,
-        (double) command->rear_left_target_speed,
-        (double) command->rear_right_target_speed);
+        left,
+        right);
 }
 
 int artemis_protocol_format_stop(char *buffer, size_t buffer_size, const char *reason)

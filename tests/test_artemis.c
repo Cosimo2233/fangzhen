@@ -79,7 +79,7 @@ static void test_protocol(void)
     command.rear_left_target_speed = 7.25f;
     command.rear_right_target_speed = -1.5f;
     assert(artemis_protocol_format_step(output, sizeof(output), &command) > 0);
-    assert(strcmp(output, "STEP 12 7.250000 -1.500000\n") == 0);
+    assert(strcmp(output, "STEP seq=12 left=7.250000 right=-1.500000\n") == 0);
     assert(artemis_protocol_format_start(output, sizeof(output)) > 0);
     assert(strcmp(
         output,

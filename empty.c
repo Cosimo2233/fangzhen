@@ -48,6 +48,11 @@ static void reset_runtime(uint32_t now_ms)
     app_deadline_ms = now_ms + ARTEMIS_RETRY_DELAY_MS;
 }
 
+static void stop_after_started_fault(void)
+{
+    app_state = APP_DONE;
+}
+
 static void start_session(uint32_t now_ms)
 {
     char output[ARTEMIS_UART_TX_BUFFER_SIZE];
@@ -62,7 +67,7 @@ static void start_session(uint32_t now_ms)
         return;
     }
     app_state = APP_WAIT_STARTED;
-    app_deadline_ms = now_ms + ARTEMIS_RESPONSE_TIMEOUT_MS;
+    app_deadline_ms = now_ms + ARTEMIS_START_RESPONSE_TIMEOUT_MS;
 }
 
 static void send_stop(uint32_t now_ms)
@@ -110,13 +115,15 @@ static void handle_response(const artemis_response_t *response, uint32_t now_ms)
     }
     switch (response->type) {
         case ARTEMIS_RESPONSE_STARTED:
-            artemis_mission_reset(&mission);
-            handle_observation(&response->observation, now_ms);
+            if (app_state == APP_WAIT_STARTED) {
+                artemis_mission_reset(&mission);
+                handle_observation(&response->observation, now_ms);
+            }
             break;
         case ARTEMIS_RESPONSE_OBSERVATION:
             if (app_state == APP_WAIT_OBSERVATION) {
                 handle_observation(&response->observation, now_ms);
-            } else {
+            } else if (app_state == APP_WAIT_STARTED) {
                 reset_runtime(now_ms);
             }
             break;
@@ -125,7 +132,11 @@ static void handle_response(const artemis_response_t *response, uint32_t now_ms)
             break;
         case ARTEMIS_RESPONSE_ERROR:
         default:
-            reset_runtime(now_ms);
+            if (app_state == APP_WAIT_STARTED) {
+                reset_runtime(now_ms);
+            } else {
+                stop_after_started_fault();
+            }
             break;
     }
 }
@@ -168,15 +179,15 @@ int main(void)
         if (uart_link_read_line(input, sizeof(input))) {
             if (artemis_protocol_parse_response(input, &response)) {
                 handle_response(&response, now_ms);
-            } else {
+            } else if (app_state == APP_WAIT_STARTED) {
                 reset_runtime(now_ms);
+            } else {
+                stop_after_started_fault();
             }
         }
         if ((app_state == APP_RETRY_START) && time_reached(now_ms, app_deadline_ms)) {
             start_session(now_ms);
-        } else if (((app_state == APP_WAIT_STARTED) ||
-                    (app_state == APP_WAIT_OBSERVATION)) &&
-                   time_reached(now_ms, app_deadline_ms)) {
+        } else if ((app_state == APP_WAIT_STARTED) && time_reached(now_ms, app_deadline_ms)) {
             start_session(now_ms);
         } else if ((app_state == APP_WAIT_FINISHED) &&
                    time_reached(now_ms, app_deadline_ms)) {
