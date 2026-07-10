@@ -1,0 +1,32 @@
+# Keil / ArmClang build output
+**/Objects/
+**/Listings/
+*.axf
+*.elf
+*.hex
+*.bin
+*.map
+*.htm
+*.lnp
+*.dep
+*.o
+*.obj
+*.d
+*.lst
+
+# Keil user/session files
+*.uvguix.*
+*.uvgui.*
+*.uvoptx
+*.uvopt
+*.uvmpw
+JLinkLog.txt
+JLinkSettings.ini
+
+# Editor and local logs
+.vscode/
+*.log
+*.lock
+
+# SysConfig generated graph output
+Event.dot
