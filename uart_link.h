@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* UART0 行协议封装：RX 中断进环形缓冲，主循环按 LF 取完整一行。 */
 void uart_link_init(void);
 bool uart_link_read_line(char *line, size_t line_size);
 void uart_link_write(const char *text);

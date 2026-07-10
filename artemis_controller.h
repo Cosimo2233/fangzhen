@@ -6,11 +6,13 @@
 
 #include "artemis_types.h"
 
+/* 循迹 PID 实现模式。具体通过 artemis_config.h 的 ARTEMIS_LINE_PID_MODE 选择。 */
 typedef enum {
     ARTEMIS_LINE_CONTROLLER_ORIGINAL,
     ARTEMIS_LINE_CONTROLLER_FUZZY
 } artemis_line_controller_mode_t;
 
+/* 循迹控制器内部状态：保存当前线误差、上一帧误差和积分项。 */
 typedef struct {
     artemis_line_controller_mode_t mode;
     float line_error;
@@ -19,6 +21,7 @@ typedef struct {
     float previous_control_error;
 } artemis_line_controller_t;
 
+/* 航向控制器内部状态：用于 yaw PID、误差滤波和稳定判定。 */
 typedef struct {
     float integral;
     float previous_error;
@@ -26,6 +29,7 @@ typedef struct {
     uint16_t stable_counter;
 } artemis_yaw_controller_t;
 
+/* task3 任务状态机的运行时状态。 */
 typedef struct {
     artemis_line_controller_t line_controller;
     artemis_yaw_controller_t yaw_controller;

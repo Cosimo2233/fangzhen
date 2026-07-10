@@ -17,6 +17,7 @@ static bool detect_line(const uint8_t *digital_values, size_t digital_count)
     const size_t count = digital_count < ARTEMIS_MAX_LINE_SENSORS
         ? digital_count
         : ARTEMIS_MAX_LINE_SENSORS;
+    /* 任意一个巡线位为 1 就认为当前传感器接触黑线。 */
     for (index = 0U; index < count; index++) {
         if (digital_values[index] != 0U) {
             return true;
@@ -27,6 +28,7 @@ static bool detect_line(const uint8_t *digital_values, size_t digital_count)
 
 static void request_pulse(line_indicator_t *indicator, uint32_t now_ms)
 {
+    /* 如果正在闪烁，新边沿只排队，保证两次闪烁之间有 100ms 灭灯间隔。 */
     if (indicator->phase == LINE_INDICATOR_IDLE) {
         indicator->phase = LINE_INDICATOR_ON;
         indicator->deadline_ms = now_ms + ARTEMIS_LED_ON_MS;
@@ -49,6 +51,7 @@ void line_indicator_update(
 {
     const bool present = detect_line(digital_values, digital_count);
 
+    /* 接触/离开都要求连续 ARTEMIS_LED_CONFIRM_FRAMES 帧确认，过滤单帧抖动。 */
     if (present == indicator->stable_line_present) {
         indicator->candidate_line_present = present;
         indicator->candidate_frames = 0U;
@@ -69,6 +72,7 @@ void line_indicator_update(
 
 void line_indicator_tick(line_indicator_t *indicator, uint32_t now_ms)
 {
+    /* 非阻塞计时。主循环每次调用一次，不暂停串口接收和控制计算。 */
     while ((indicator->phase != LINE_INDICATOR_IDLE) &&
            time_reached(now_ms, indicator->deadline_ms)) {
         if (indicator->phase == LINE_INDICATOR_ON) {

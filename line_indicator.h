@@ -11,6 +11,7 @@ typedef enum {
     LINE_INDICATOR_GAP
 } line_indicator_phase_t;
 
+/* PA14 黑线边沿提示灯状态。pending_pulses 用来排队重叠闪烁事件。 */
 typedef struct {
     uint32_t deadline_ms;
     uint8_t candidate_frames;

@@ -40,6 +40,7 @@
 ;   <o> Stack Size (in Bytes) <0x0-0xFFFFFFFF:8>
 ; </h>
 
+; 固件协议解析和控制计算调用链较深，栈保持 4KB，避免 OBS 后进入深层解析时溢出。
 Stack_Size      EQU     0x00001000
 
                 AREA    STACK, NOINIT, READWRITE, ALIGN=3

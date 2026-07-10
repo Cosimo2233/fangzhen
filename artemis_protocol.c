@@ -15,6 +15,7 @@ typedef struct {
     size_t length;
 } token_view_t;
 
+/* token_view_t 只指向原始行缓冲，避免解析协议时动态分配内存。 */
 static const char *skip_space(const char *cursor)
 {
     while ((*cursor != '\0') && isspace((unsigned char) *cursor)) {
@@ -126,6 +127,7 @@ static bool parse_digital_token(token_view_t value, artemis_observation_t *obser
     if (value.length == 0U) {
         return false;
     }
+    /* dig 可能是 7 位或 8 位；控制器最多只消费前 8 个巡线传感器。 */
     memset(observation->digital_values, 0, sizeof(observation->digital_values));
     observation->digital_count =
         value.length < ARTEMIS_MAX_LINE_SENSORS ? value.length : ARTEMIS_MAX_LINE_SENSORS;
@@ -143,6 +145,7 @@ static bool parse_digital_token(token_view_t value, artemis_observation_t *obser
 
 static bool parse_observation_fields(const char *cursor, artemis_observation_t *observation)
 {
+    /* 用 seen 位图确认必需字段齐全，同时允许字段乱序和额外字段。 */
     enum {
         SEEN_SEQUENCE = 1U << 0,
         SEEN_TIME = 1U << 1,
@@ -266,6 +269,10 @@ static int format_fixed6(char *buffer, size_t buffer_size, float value)
     uint32_t fractional_part;
     const char *sign = "";
 
+    /*
+     * Keil/ARMCLANG 目标库上 printf 浮点格式可能被裁剪。
+     * 这里手动转成 6 位小数，避免 STEP 输出因为 %f 支持问题被截断。
+     */
     if (!isfinite(value)) {
         return -1;
     }
@@ -324,6 +331,10 @@ bool artemis_protocol_parse_response(const char *line, artemis_response_t *respo
 
 int artemis_protocol_format_start(char *buffer, size_t buffer_size)
 {
+    /*
+     * START 内容是固定的，直接复制常量字符串。
+     * 这样可以避开 %.6g 在目标板 C 库上的浮点格式化问题。
+     */
     static const char start_command[] =
         "START max_time_s=120 control_period_s=0.02 initial_progress_index=0\n";
 

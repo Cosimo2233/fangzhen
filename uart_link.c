@@ -14,6 +14,7 @@ static volatile uint16_t rx_head;
 static volatile uint16_t rx_tail;
 static volatile uint32_t rx_overruns;
 
+/* 行缓冲只在主循环里使用；中断只负责把原始字节放入 rx_buffer。 */
 static char line_buffer[ARTEMIS_UART_LINE_BUFFER_SIZE];
 static size_t line_length;
 static bool line_discarding;
@@ -57,6 +58,7 @@ bool uart_link_read_line(char *line, size_t line_size)
             continue;
         }
         if (value == '\n') {
+            /* 超长行会一直丢弃到下一个 LF，避免半帧进入协议解析。 */
             if (line_discarding) {
                 line_discarding = false;
                 line_length = 0U;
@@ -92,6 +94,7 @@ void uart_link_write(const char *text)
     if (text == NULL) {
         return;
     }
+    /* TX 使用阻塞发送。当前协议一帧很短，简单可靠，且不会占用动态内存。 */
     while (*text != '\0') {
         DL_UART_Main_transmitDataBlocking(UART_0_INST, (uint8_t) *text);
         text++;
@@ -105,6 +108,7 @@ uint32_t uart_link_overrun_count(void)
 
 void UART_0_INST_IRQHandler(void)
 {
+    /* RX 中断尽量短，只搬运一个字节，解析工作留给主循环。 */
     if (DL_UART_Main_getPendingInterrupt(UART_0_INST) == DL_UART_MAIN_IIDX_RX) {
         const uint8_t value = DL_UART_Main_receiveData(UART_0_INST);
         const uint16_t head = rx_head;

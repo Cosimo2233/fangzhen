@@ -20,6 +20,15 @@ typedef struct {
     float max_duration_s;
 } task_action_t;
 
+/*
+ * task3 动作表。修改任务流程时优先改这里：
+ * 1. 按 yaw_offset_deg 行驶直到见线
+ * 2. 循迹直到丢线
+ * 3. 转向稳定
+ * 4. 再次找线
+ * 5. 再次循迹
+ * 6. 完成任务
+ */
 static const task_action_t task3_actions[] = {
     {ACTION_DRIVE_UNTIL_LINE, -38.659808254090095f, 7.0f, 0.0f, 5.0f},
     {ACTION_TRACK_UNTIL_LOST, 0.0f, 7.0f, 0.0f, 8.0f},
@@ -29,6 +38,7 @@ static const task_action_t task3_actions[] = {
     {ACTION_FINISH, 0.0f, 0.0f, 0.0f, 0.0f},
 };
 
+/* 8 路巡线传感器的横向权重，左侧为负，右侧为正，中间没有 0 权重。 */
 static const float line_weights[ARTEMIS_MAX_LINE_SENSORS] = {
     -4.0f, -3.0f, -2.0f, -1.0f, 1.0f, 2.0f, 3.0f, 4.0f};
 
@@ -45,6 +55,7 @@ static float clamp_float(float value, float lower, float upper)
 
 static float wrap_error_deg(float angle_deg)
 {
+    /* yaw 误差归一化到 (-180, 180]，避免 359 度和 0 度附近跳变。 */
     while (angle_deg <= -180.0f) {
         angle_deg += 360.0f;
     }
@@ -106,6 +117,7 @@ bool artemis_line_controller_scan(
         ? digital_count
         : ARTEMIS_MAX_LINE_SENSORS;
 
+    /* 把所有压到黑线的传感器权重取平均，作为当前位置误差。 */
     for (index = 0U; index < count; index++) {
         if (digital_values[index] != 0U) {
             weighted_sum += line_weights[index];
@@ -121,6 +133,7 @@ bool artemis_line_controller_scan(
 
 static float compute_original_turn(artemis_line_controller_t *controller, float velocity)
 {
+    /* 普通循迹 PID：kp=25, ki=0, kd=3.5，并按速度做输出缩放。 */
     const float control_error = -controller->line_error;
     const float derivative = control_error - controller->previous_control_error;
     const float calibration = 150.0f / (velocity + 1.0f);
@@ -135,6 +148,7 @@ static float compute_original_turn(artemis_line_controller_t *controller, float 
 
 static float compute_fuzzy_turn(artemis_line_controller_t *controller, float velocity)
 {
+    /* 模糊 PID：根据误差和误差变化量在线调整 kp/ki/kd。 */
     const float delta_error = controller->line_error - controller->previous_line_error;
     const float control_error = -controller->line_error;
     const float derivative = control_error - controller->previous_control_error;
@@ -182,6 +196,7 @@ float artemis_yaw_controller_compute(
     const float raw_error = wrap_error_deg(target_yaw_deg - current_yaw_deg);
     float pid_output;
 
+    /* 航向 PID 先滤波误差，减少仿真 yaw 抖动导致的轮速跳变。 */
     controller->filtered_error =
         0.3f * controller->filtered_error + 0.7f * raw_error;
     controller->integral += controller->filtered_error;
@@ -250,6 +265,7 @@ static artemis_control_command_t track_command(
 
 static void enter_action(artemis_mission_t *mission, const artemis_observation_t *observation)
 {
+    /* 每个动作进入时记录起始时间和距离，并清空见线/丢线计数。 */
     mission->action_started_at_s = observation->sim_time_s;
     mission->distance_started_at_cm = observation->forward_distance_cm;
     mission->confirm_count = 0U;
@@ -275,15 +291,18 @@ static bool action_completed(
     const float elapsed = observation->sim_time_s - mission->action_started_at_s;
     const bool line_detected = any_line(observation);
 
+    /* 转向动作按固定 settle 时间结束，不依赖真实电机反馈。 */
     if (action->kind == ACTION_TURN_SETTLE) {
         return elapsed >= action->duration_s;
     }
     if (action->kind == ACTION_DRIVE_UNTIL_LINE) {
+        /* 找线阶段要求连续多帧见线，避免单帧噪声切换动作。 */
         mission->confirm_count = line_detected ? (uint16_t) (mission->confirm_count + 1U) : 0U;
         return (mission->confirm_count >= ARTEMIS_LINE_CONFIRM_FRAMES) ||
             ((action->max_duration_s > 0.0f) && (elapsed >= action->max_duration_s));
     }
     if (action->kind == ACTION_TRACK_UNTIL_LOST) {
+        /* 循迹阶段必须先见过线，再用连续丢线帧数判定离开黑线。 */
         if (line_detected) {
             mission->line_seen = true;
             mission->confirm_count = 0U;
@@ -298,6 +317,7 @@ static bool action_completed(
 
 void artemis_mission_reset(artemis_mission_t *mission)
 {
+    /* PID 模式在编译期由 artemis_config.h 选择。 */
     const artemis_line_controller_mode_t mode =
         ARTEMIS_LINE_PID_MODE == ARTEMIS_LINE_PID_FUZZY
         ? ARTEMIS_LINE_CONTROLLER_FUZZY
@@ -313,6 +333,7 @@ artemis_control_command_t artemis_mission_step(
 {
     const size_t action_count = sizeof(task3_actions) / sizeof(task3_actions[0]);
 
+    /* 第一帧观测的 yaw 作为任务基准角，动作表里的角度是相对偏移。 */
     if (!mission->base_yaw_valid) {
         mission->base_yaw_deg = observation->yaw_deg;
         mission->base_yaw_valid = true;

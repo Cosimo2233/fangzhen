@@ -7,6 +7,7 @@
 
 #define ARTEMIS_MAX_LINE_SENSORS 8U
 
+/* 桥接软件返回的一帧仿真观测。固件不读取真实传感器，只消费这些字段。 */
 typedef struct {
     uint32_t sequence_id;
     float sim_time_s;
@@ -18,6 +19,7 @@ typedef struct {
     float forward_distance_cm;
 } artemis_observation_t;
 
+/* 固件根据观测计算出的控制命令，最终会格式化成 STEP 串口命令。 */
 typedef struct {
     uint32_t sequence_id;
     float velocity;

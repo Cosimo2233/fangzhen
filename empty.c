@@ -17,6 +17,7 @@ typedef enum {
     APP_DONE
 } app_state_t;
 
+/* 主循环状态。大缓冲放在静态区，避免 MSPM0 小栈被协议解析调用链压爆。 */
 static volatile uint32_t system_millis;
 static app_state_t app_state;
 static uint32_t app_deadline_ms;
@@ -34,6 +35,7 @@ static bool time_reached(uint32_t now_ms, uint32_t deadline_ms)
 
 static bool send_formatted(int length, const char *buffer, size_t buffer_size)
 {
+    /* snprintf 返回值 >= buffer_size 表示输出被截断，不能发送半条协议。 */
     if ((length < 0) || ((size_t) length >= buffer_size)) {
         return false;
     }
@@ -43,6 +45,7 @@ static bool send_formatted(int length, const char *buffer, size_t buffer_size)
 
 static void reset_runtime(uint32_t now_ms)
 {
+    /* 仅用于握手阶段或发送失败后的重新开始。正式任务启动后不再反复 START。 */
     artemis_mission_reset(&mission);
     line_indicator_reset(&line_indicator);
     led_output_on = false;
@@ -53,11 +56,13 @@ static void reset_runtime(uint32_t now_ms)
 
 static void stop_after_started_fault(void)
 {
+    /* 握手成功后的异常先静默停机，避免把 Mudri 会话反复拉回起点。 */
     app_state = APP_DONE;
 }
 
 static void start_session(uint32_t now_ms)
 {
+    /* 上电或握手超时后发送 START，请桥接软件启动一次仿真会话。 */
     const int length = artemis_protocol_format_start(app_tx_buffer, sizeof(app_tx_buffer));
 
     artemis_mission_reset(&mission);
@@ -74,6 +79,7 @@ static void start_session(uint32_t now_ms)
 
 static void send_stop(uint32_t now_ms)
 {
+    /* task3 完成后显式通知桥接软件停止会话。 */
     const int length =
         artemis_protocol_format_stop(app_tx_buffer, sizeof(app_tx_buffer), "task_completed");
 
@@ -87,6 +93,7 @@ static void send_stop(uint32_t now_ms)
 
 static void handle_observation(const artemis_observation_t *observation, uint32_t now_ms)
 {
+    /* 每收到 STARTED/OBS 中的一帧观测，就推进一次任务并回一条 STEP。 */
     const artemis_control_command_t command = artemis_mission_step(&mission, observation);
     int length;
 
@@ -115,12 +122,14 @@ static void handle_response(const artemis_response_t *response, uint32_t now_ms)
     }
     switch (response->type) {
         case ARTEMIS_RESPONSE_STARTED:
+            /* STARTED 自带第一帧观测，握手成功后立即进入正式任务。 */
             if (app_state == APP_WAIT_STARTED) {
                 artemis_mission_reset(&mission);
                 handle_observation(&response->observation, now_ms);
             }
             break;
         case ARTEMIS_RESPONSE_OBSERVATION:
+            /* 正式任务阶段只接受 OBS，收到一帧才发送下一条 STEP。 */
             if (app_state == APP_WAIT_OBSERVATION) {
                 handle_observation(&response->observation, now_ms);
             } else if (app_state == APP_WAIT_STARTED) {
@@ -143,6 +152,7 @@ static void handle_response(const artemis_response_t *response, uint32_t now_ms)
 
 static void update_led(uint32_t now_ms)
 {
+    /* PA14 LED 闪烁由 SysTick 时间驱动，不阻塞串口和控制计算。 */
     line_indicator_tick(&line_indicator, now_ms);
     if (line_indicator_is_on(&line_indicator) == led_output_on) {
         return;
@@ -157,6 +167,7 @@ static void update_led(uint32_t now_ms)
 
 int main(void)
 {
+    /* 初始化硬件、串口、1ms SysTick，然后进入无 RTOS 主循环。 */
     SYSCFG_DL_init();
     uart_link_init();
     if (SysTick_Config(CPUCLK_FREQ / 1000U) != 0U) {
@@ -173,6 +184,7 @@ int main(void)
         const uint32_t now_ms = system_millis;
 
         update_led(now_ms);
+        /* 先处理桥接软件响应，再检查状态机超时。 */
         if (uart_link_read_line(app_input_buffer, sizeof(app_input_buffer))) {
             if (artemis_protocol_parse_response(app_input_buffer, &app_response)) {
                 handle_response(&app_response, now_ms);
@@ -185,6 +197,7 @@ int main(void)
         if ((app_state == APP_RETRY_START) && time_reached(now_ms, app_deadline_ms)) {
             start_session(now_ms);
         } else if ((app_state == APP_WAIT_STARTED) && time_reached(now_ms, app_deadline_ms)) {
+            /* 只有握手阶段会重发 START，避免正式任务中反复重启仿真。 */
             start_session(now_ms);
         } else if ((app_state == APP_WAIT_FINISHED) &&
                    time_reached(now_ms, app_deadline_ms)) {
