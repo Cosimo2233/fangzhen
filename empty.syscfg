@@ -12,6 +12,8 @@
 const GPIO   = scripting.addModule("/ti/driverlib/GPIO", {}, false);
 const GPIO1  = GPIO.addInstance();
 const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
+const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
+const UART1  = UART.addInstance();
 
 /**
  * Write custom configuration values to the imported modules.
@@ -20,6 +22,15 @@ GPIO1.$name                          = "LED";
 GPIO1.associatedPins[0].$name        = "PIN_0";
 GPIO1.associatedPins[0].assignedPort = "PORTA";
 GPIO1.associatedPins[0].assignedPin  = "14";
+
+UART1.$name                    = "UART_0";
+UART1.targetBaudRate           = 115200;
+UART1.enableFIFO               = false;
+UART1.enableInternalLoopback   = false;
+UART1.enabledInterrupts        = ["RX"];
+UART1.peripheral.$assign       = "UART0";
+UART1.peripheral.rxPin.$assign = "PA11";
+UART1.peripheral.txPin.$assign = "PA10";
 
 const Board = scripting.addModule("/ti/driverlib/Board", {}, false);
 
@@ -35,3 +46,6 @@ Board.peripheral.$suggestSolution            = "DEBUGSS";
 Board.peripheral.swclkPin.$suggestSolution   = "PA20";
 Board.peripheral.swdioPin.$suggestSolution   = "PA19";
 SYSCTL.peripheral.$suggestSolution           = "SYSCTL";
+UART1.peripheral.$suggestSolution             = "UART0";
+UART1.peripheral.rxPin.$suggestSolution       = "PA11";
+UART1.peripheral.txPin.$suggestSolution       = "PA10";

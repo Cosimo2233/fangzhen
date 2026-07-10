@@ -138,7 +138,7 @@
           </Flash1>
           <bUseTDR>1</bUseTDR>
           <Flash2></Flash2>
-          <Flash3></Flash3>
+          <Flash3>"" ()</Flash3>
           <Flash4></Flash4>
           <pFcarmOut></pFcarmOut>
           <pFcarmGrp></pFcarmGrp>
@@ -374,7 +374,7 @@
             <ScatterFile>./mspm0g3507.sct</ScatterFile>
             <IncludeLibs></IncludeLibs>
             <IncludeLibsPath></IncludeLibsPath>
-            <Misc>D:\ti\mspm0_sdk_2_04_00_06\source\ti\driverlib\lib\keil\m0p\mspm0g1x0x_g3x0x\driverlib.a</Misc>
+            <Misc>--keep=flash_padding.o(FLASH_PADDING) D:\ti\mspm0_sdk_2_04_00_06\source\ti\driverlib\lib\keil\m0p\mspm0g1x0x_g3x0x\driverlib.a</Misc>
             <LinkerInputFile></LinkerInputFile>
             <DisabledWarnings></DisabledWarnings>
           </LDads>
@@ -390,6 +390,26 @@
               <FilePath>../empty.c</FilePath>
             </File>
             <File>
+              <FileName>artemis_protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../artemis_protocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>artemis_controller.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../artemis_controller.c</FilePath>
+            </File>
+            <File>
+              <FileName>line_indicator.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../line_indicator.c</FilePath>
+            </File>
+            <File>
+              <FileName>uart_link.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../uart_link.c</FilePath>
+            </File>
+            <File>
               <FileName>empty.syscfg</FileName>
               <FileType>5</FileType>
               <FilePath>../empty.syscfg</FilePath>
@@ -398,6 +418,11 @@
               <FileName>startup_mspm0g350x_uvision.s</FileName>
               <FileType>2</FileType>
               <FilePath>startup_mspm0g350x_uvision.s</FilePath>
+            </File>
+            <File>
+              <FileName>flash_padding.s</FileName>
+              <FileType>2</FileType>
+              <FilePath>flash_padding.s</FilePath>
             </File>
             <File>
               <FileName>ti_msp_dl_config.h</FileName>
