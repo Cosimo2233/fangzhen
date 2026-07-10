@@ -23,6 +23,9 @@ static uint32_t app_deadline_ms;
 static artemis_mission_t mission;
 static line_indicator_t line_indicator;
 static bool led_output_on;
+static char app_input_buffer[ARTEMIS_UART_LINE_BUFFER_SIZE];
+static char app_tx_buffer[ARTEMIS_UART_TX_BUFFER_SIZE];
+static artemis_response_t app_response;
 
 static bool time_reached(uint32_t now_ms, uint32_t deadline_ms)
 {
@@ -55,14 +58,13 @@ static void stop_after_started_fault(void)
 
 static void start_session(uint32_t now_ms)
 {
-    char output[ARTEMIS_UART_TX_BUFFER_SIZE];
-    const int length = artemis_protocol_format_start(output, sizeof(output));
+    const int length = artemis_protocol_format_start(app_tx_buffer, sizeof(app_tx_buffer));
 
     artemis_mission_reset(&mission);
     line_indicator_reset(&line_indicator);
     DL_GPIO_clearPins(LED_PORT, LED_PIN_0_PIN);
     led_output_on = false;
-    if (!send_formatted(length, output, sizeof(output))) {
+    if (!send_formatted(length, app_tx_buffer, sizeof(app_tx_buffer))) {
         reset_runtime(now_ms);
         return;
     }
@@ -72,11 +74,10 @@ static void start_session(uint32_t now_ms)
 
 static void send_stop(uint32_t now_ms)
 {
-    char output[ARTEMIS_UART_TX_BUFFER_SIZE];
     const int length =
-        artemis_protocol_format_stop(output, sizeof(output), "task_completed");
+        artemis_protocol_format_stop(app_tx_buffer, sizeof(app_tx_buffer), "task_completed");
 
-    if (!send_formatted(length, output, sizeof(output))) {
+    if (!send_formatted(length, app_tx_buffer, sizeof(app_tx_buffer))) {
         app_state = APP_DONE;
         return;
     }
@@ -86,7 +87,6 @@ static void send_stop(uint32_t now_ms)
 
 static void handle_observation(const artemis_observation_t *observation, uint32_t now_ms)
 {
-    char output[ARTEMIS_UART_TX_BUFFER_SIZE];
     const artemis_control_command_t command = artemis_mission_step(&mission, observation);
     int length;
 
@@ -99,8 +99,8 @@ static void handle_observation(const artemis_observation_t *observation, uint32_
         send_stop(now_ms);
         return;
     }
-    length = artemis_protocol_format_step(output, sizeof(output), &command);
-    if (!send_formatted(length, output, sizeof(output))) {
+    length = artemis_protocol_format_step(app_tx_buffer, sizeof(app_tx_buffer), &command);
+    if (!send_formatted(length, app_tx_buffer, sizeof(app_tx_buffer))) {
         reset_runtime(now_ms);
         return;
     }
@@ -157,9 +157,6 @@ static void update_led(uint32_t now_ms)
 
 int main(void)
 {
-    char input[ARTEMIS_UART_LINE_BUFFER_SIZE];
-    artemis_response_t response;
-
     SYSCFG_DL_init();
     uart_link_init();
     if (SysTick_Config(CPUCLK_FREQ / 1000U) != 0U) {
@@ -176,9 +173,9 @@ int main(void)
         const uint32_t now_ms = system_millis;
 
         update_led(now_ms);
-        if (uart_link_read_line(input, sizeof(input))) {
-            if (artemis_protocol_parse_response(input, &response)) {
-                handle_response(&response, now_ms);
+        if (uart_link_read_line(app_input_buffer, sizeof(app_input_buffer))) {
+            if (artemis_protocol_parse_response(app_input_buffer, &app_response)) {
+                handle_response(&app_response, now_ms);
             } else if (app_state == APP_WAIT_STARTED) {
                 reset_runtime(now_ms);
             } else {
