@@ -37,6 +37,7 @@ typedef struct {
     float action_started_at_s;
     float distance_started_at_cm;
     uint16_t confirm_count;
+    uint16_t lap_count;
     uint8_t action_index;
     bool base_yaw_valid;
     bool action_started;

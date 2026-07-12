@@ -5,8 +5,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "artemis_config.h"
 #include "artemis_controller.h"
 #include "artemis_protocol.h"
+#include "artemis_runtime_params.h"
 #include "line_indicator.h"
 
 static void assert_near(float actual, float expected, float tolerance)
@@ -38,6 +40,7 @@ static artemis_observation_t observation(
 static void test_protocol(void)
 {
     artemis_response_t response;
+    artemis_config_command_t config_command;
     artemis_control_command_t command;
     char output[128];
 
@@ -84,6 +87,19 @@ static void test_protocol(void)
     assert(strcmp(
         output,
         "START max_time_s=120 control_period_s=0.02 initial_progress_index=0\n") == 0);
+
+    assert(artemis_protocol_parse_config_command(
+        "PARAM name=line_kp value=31.5", &config_command));
+    assert(config_command.type == ARTEMIS_CONFIG_COMMAND_SET_PARAM);
+    assert(strcmp(config_command.name, "line_kp") == 0);
+    assert_near(config_command.value, 31.5f, 0.0001f);
+    assert(artemis_protocol_parse_config_command("PARAM yaw_kp=0.42", &config_command));
+    assert(strcmp(config_command.name, "yaw_kp") == 0);
+    assert_near(config_command.value, 0.42f, 0.0001f);
+    assert(artemis_protocol_parse_config_command("PARAM_RESET", &config_command));
+    assert(config_command.type == ARTEMIS_CONFIG_COMMAND_RESET_PARAMS);
+    assert(artemis_protocol_is_config_command("PARAM name=line_kp"));
+    assert(!artemis_protocol_parse_config_command("PARAM name=line_kp", &config_command));
 }
 
 static void test_controllers(void)
@@ -120,6 +136,26 @@ static void test_controllers(void)
     artemis_yaw_controller_reset(&yaw);
     assert(artemis_yaw_controller_compute(&yaw, 1.0f, 359.0f, &stable) > 0.0f);
     assert(!stable);
+}
+
+static void test_runtime_params(void)
+{
+    artemis_line_controller_t original;
+    const uint8_t right_line[8] = {0U, 0U, 0U, 0U, 0U, 0U, 1U, 1U};
+    float before;
+    float after;
+
+    artemis_runtime_params_reset();
+    artemis_line_controller_init(&original, ARTEMIS_LINE_CONTROLLER_ORIGINAL);
+    assert(artemis_line_controller_scan(&original, right_line, 8U));
+    before = fabsf(artemis_line_controller_compute_turn(&original, 7.0f));
+
+    assert(artemis_runtime_param_set("line_kp", 50.0f));
+    artemis_line_controller_reset(&original);
+    assert(artemis_line_controller_scan(&original, right_line, 8U));
+    after = fabsf(artemis_line_controller_compute_turn(&original, 7.0f));
+    assert(after > before);
+    artemis_runtime_params_reset();
 }
 
 static void test_task3(void)
@@ -190,8 +226,13 @@ static void test_task3(void)
         obs = observation(sequence_id++, time_s, -130.0f, "00000000");
         command = artemis_mission_step(&mission, &obs);
     }
+#if ARTEMIS_MISSION_REPEAT_COUNT == 0U
+    assert(!command.completed);
+    assert(mission.action_index == 0U);
+#else
     assert(command.completed);
     assert(mission.action_index == 5U);
+#endif
 }
 
 static void test_line_indicator(void)
@@ -232,6 +273,7 @@ int main(void)
 {
     test_protocol();
     test_controllers();
+    test_runtime_params();
     test_task3();
     test_line_indicator();
     puts("All Artemis firmware host tests passed.");

@@ -29,8 +29,23 @@ typedef struct {
     char error_message[128];
 } artemis_response_t;
 
+typedef enum {
+    ARTEMIS_CONFIG_COMMAND_SET_PARAM,
+    ARTEMIS_CONFIG_COMMAND_RESET_PARAMS
+} artemis_config_command_type_t;
+
+typedef struct {
+    artemis_config_command_type_t type;
+    char name[40];
+    float value;
+} artemis_config_command_t;
+
 /* 解析 STARTED/OBS/FINISHED/ERR，字段按 key=value 读取，不依赖顺序。 */
 bool artemis_protocol_parse_response(const char *line, artemis_response_t *response);
+bool artemis_protocol_is_config_command(const char *line);
+bool artemis_protocol_parse_config_command(
+    const char *line,
+    artemis_config_command_t *command);
 /* 格式化 MCU -> 桥接软件的 START 命令。 */
 int artemis_protocol_format_start(char *buffer, size_t buffer_size);
 /* 格式化 STEP 命令。速度用定点方式输出，避免 Keil printf 浮点支持问题。 */

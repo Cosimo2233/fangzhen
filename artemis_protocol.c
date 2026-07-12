@@ -260,6 +260,73 @@ static bool parse_error_fields(const char *cursor, char *message, size_t message
     return false;
 }
 
+bool artemis_protocol_is_config_command(const char *line)
+{
+    const char *cursor = line;
+    token_view_t prefix;
+
+    if (line == NULL) {
+        return false;
+    }
+    if (!next_token(&cursor, &prefix)) {
+        return false;
+    }
+    return token_equals(prefix, "PARAM") || token_equals(prefix, "PARAM_RESET");
+}
+
+bool artemis_protocol_parse_config_command(
+    const char *line,
+    artemis_config_command_t *command)
+{
+    const char *cursor = line;
+    token_view_t prefix;
+    token_view_t token;
+    bool has_name = false;
+    bool has_value = false;
+
+    if ((line == NULL) || (command == NULL)) {
+        return false;
+    }
+    memset(command, 0, sizeof(*command));
+    if (!next_token(&cursor, &prefix)) {
+        return false;
+    }
+    if (token_equals(prefix, "PARAM_RESET")) {
+        command->type = ARTEMIS_CONFIG_COMMAND_RESET_PARAMS;
+        return true;
+    }
+    if (!token_equals(prefix, "PARAM")) {
+        return false;
+    }
+    command->type = ARTEMIS_CONFIG_COMMAND_SET_PARAM;
+    while (next_token(&cursor, &token)) {
+        token_view_t key;
+        token_view_t value;
+        if (!split_key_value(token, &key, &value)) {
+            return false;
+        }
+        if (token_equals(key, "name")) {
+            if (!copy_token(command->name, sizeof(command->name), value)) {
+                return false;
+            }
+            has_name = true;
+        } else if (token_equals(key, "value")) {
+            if (!parse_float_token(value, &command->value)) {
+                return false;
+            }
+            has_value = true;
+        } else if (!has_name && !has_value) {
+            if (!copy_token(command->name, sizeof(command->name), key) ||
+                !parse_float_token(value, &command->value)) {
+                return false;
+            }
+            has_name = true;
+            has_value = true;
+        }
+    }
+    return has_name && has_value;
+}
+
 static int format_fixed6(char *buffer, size_t buffer_size, float value)
 {
     float scaled_float;

@@ -6,6 +6,7 @@
 #include "artemis_config.h"
 #include "artemis_controller.h"
 #include "artemis_protocol.h"
+#include "artemis_runtime_params.h"
 #include "line_indicator.h"
 #include "uart_link.h"
 
@@ -27,6 +28,7 @@ static bool led_output_on;
 static char app_input_buffer[ARTEMIS_UART_LINE_BUFFER_SIZE];
 static char app_tx_buffer[ARTEMIS_UART_TX_BUFFER_SIZE];
 static artemis_response_t app_response;
+static artemis_config_command_t app_config_command;
 
 static bool time_reached(uint32_t now_ms, uint32_t deadline_ms)
 {
@@ -150,6 +152,15 @@ static void handle_response(const artemis_response_t *response, uint32_t now_ms)
     }
 }
 
+static void handle_config_command(const artemis_config_command_t *command)
+{
+    if (command->type == ARTEMIS_CONFIG_COMMAND_RESET_PARAMS) {
+        artemis_runtime_params_reset();
+    } else {
+        (void) artemis_runtime_param_set(command->name, command->value);
+    }
+}
+
 static void update_led(uint32_t now_ms)
 {
     /* PA14 LED 闪烁由 SysTick 时间驱动，不阻塞串口和控制计算。 */
@@ -186,7 +197,11 @@ int main(void)
         update_led(now_ms);
         /* 先处理桥接软件响应，再检查状态机超时。 */
         if (uart_link_read_line(app_input_buffer, sizeof(app_input_buffer))) {
-            if (artemis_protocol_parse_response(app_input_buffer, &app_response)) {
+            if (artemis_protocol_parse_config_command(app_input_buffer, &app_config_command)) {
+                handle_config_command(&app_config_command);
+            } else if (artemis_protocol_is_config_command(app_input_buffer)) {
+                /* 调参命令格式错误时忽略，不打断正在运行的仿真会话。 */
+            } else if (artemis_protocol_parse_response(app_input_buffer, &app_response)) {
                 handle_response(&app_response, now_ms);
             } else if (app_state == APP_WAIT_STARTED) {
                 reset_runtime(now_ms);

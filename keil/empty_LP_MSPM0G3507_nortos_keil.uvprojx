@@ -400,6 +400,11 @@
               <FilePath>../artemis_controller.c</FilePath>
             </File>
             <File>
+              <FileName>artemis_runtime_params.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../artemis_runtime_params.c</FilePath>
+            </File>
+            <File>
               <FileName>line_indicator.c</FileName>
               <FileType>1</FileType>
               <FilePath>../line_indicator.c</FilePath>
