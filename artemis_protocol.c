@@ -403,7 +403,7 @@ int artemis_protocol_format_start(char *buffer, size_t buffer_size)
      * 这样可以避开 %.6g 在目标板 C 库上的浮点格式化问题。
      */
     static const char start_command[] =
-        "START max_time_s=120 control_period_s=0.02 initial_progress_index=0\n";
+        "START max_time_s=600 control_period_s=0.02 initial_progress_index=0\n";
 
     if (buffer_size < sizeof(start_command)) {
         return (int) (sizeof(start_command) - 1U);

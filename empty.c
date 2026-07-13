@@ -1,4 +1,4 @@
-#include "ti_msp_dl_config.h"
+﻿#include "ti_msp_dl_config.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -7,10 +7,12 @@
 #include "artemis_controller.h"
 #include "artemis_protocol.h"
 #include "artemis_runtime_params.h"
+#include "artemis_ui.h"
 #include "line_indicator.h"
 #include "uart_link.h"
 
 typedef enum {
+    APP_MENU,
     APP_RETRY_START,
     APP_WAIT_STARTED,
     APP_WAIT_OBSERVATION,
@@ -25,10 +27,13 @@ static uint32_t app_deadline_ms;
 static artemis_mission_t mission;
 static line_indicator_t line_indicator;
 static bool led_output_on;
+static bool track_exit_led_fired;
+static uint8_t led_action_index;
 static char app_input_buffer[ARTEMIS_UART_LINE_BUFFER_SIZE];
 static char app_tx_buffer[ARTEMIS_UART_TX_BUFFER_SIZE];
 static artemis_response_t app_response;
 static artemis_config_command_t app_config_command;
+static artemis_task_id_t selected_task = ARTEMIS_TASK_ID_2;
 
 static bool time_reached(uint32_t now_ms, uint32_t deadline_ms)
 {
@@ -49,7 +54,10 @@ static void reset_runtime(uint32_t now_ms)
 {
     /* 仅用于握手阶段或发送失败后的重新开始。正式任务启动后不再反复 START。 */
     artemis_mission_reset(&mission);
+    artemis_mission_set_task(&mission, selected_task);
     line_indicator_reset(&line_indicator);
+    track_exit_led_fired = false;
+    led_action_index = 0U;
     led_output_on = false;
     DL_GPIO_clearPins(LED_PORT, LED_PIN_0_PIN);
     app_state = APP_RETRY_START;
@@ -60,6 +68,7 @@ static void stop_after_started_fault(void)
 {
     /* 握手成功后的异常先静默停机，避免把 Mudri 会话反复拉回起点。 */
     app_state = APP_DONE;
+    artemis_ui_show(selected_task, ARTEMIS_UI_STATE_ERROR);
 }
 
 static void start_session(uint32_t now_ms)
@@ -68,7 +77,10 @@ static void start_session(uint32_t now_ms)
     const int length = artemis_protocol_format_start(app_tx_buffer, sizeof(app_tx_buffer));
 
     artemis_mission_reset(&mission);
+    artemis_mission_set_task(&mission, selected_task);
     line_indicator_reset(&line_indicator);
+    track_exit_led_fired = false;
+    led_action_index = 0U;
     DL_GPIO_clearPins(LED_PORT, LED_PIN_0_PIN);
     led_output_on = false;
     if (!send_formatted(length, app_tx_buffer, sizeof(app_tx_buffer))) {
@@ -77,6 +89,7 @@ static void start_session(uint32_t now_ms)
     }
     app_state = APP_WAIT_STARTED;
     app_deadline_ms = now_ms + ARTEMIS_START_RESPONSE_TIMEOUT_MS;
+    artemis_ui_show(selected_task, ARTEMIS_UI_STATE_STARTING);
 }
 
 static void send_stop(uint32_t now_ms)
@@ -93,17 +106,72 @@ static void send_stop(uint32_t now_ms)
     app_deadline_ms = now_ms + ARTEMIS_RESPONSE_TIMEOUT_MS;
 }
 
+static bool observation_has_line(const artemis_observation_t *observation)
+{
+    size_t index;
+    const size_t count = observation->digital_count < ARTEMIS_MAX_LINE_SENSORS
+        ? observation->digital_count
+        : ARTEMIS_MAX_LINE_SENSORS;
+
+    for (index = 0U; index < count; index++) {
+        if (observation->digital_values[index] != 0U) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void update_line_indicator_from_mission(
+    uint8_t previous_action_index,
+    const artemis_observation_t *observation,
+    uint32_t now_ms)
+{
+    const bool has_line = observation_has_line(observation);
+    const bool current_is_track =
+        (mission.action_index == 1U) || (mission.action_index == 4U);
+    const float track_elapsed_s = observation->sim_time_s - mission.action_started_at_s;
+
+    if (mission.action_index != led_action_index) {
+        led_action_index = mission.action_index;
+        if (current_is_track) {
+            track_exit_led_fired = false;
+        }
+    }
+
+    /*
+     * PA14 只跟随任务状态机相关事件：
+     * 0/3 找线动作结束并且当前确实见线，表示进入 C/D 点巡线；
+     * 1/4 巡线稳定一段时间后，连续全 0 达到较短阈值时，提前提示已经出线；
+     * 若提前提示没有触发，巡线动作正式结束时再补一次。
+     */
+    if ((mission.action_index == previous_action_index) && current_is_track &&
+        mission.line_seen && !has_line && !track_exit_led_fired &&
+        (track_elapsed_s >= ARTEMIS_LED_TRACK_EXIT_MIN_TRACK_S) &&
+        (mission.confirm_count >= ARTEMIS_LED_TRACK_EXIT_CONFIRM_FRAMES)) {
+        track_exit_led_fired = true;
+        line_indicator_notify_edge(&line_indicator, now_ms);
+        return;
+    }
+    if (mission.action_index == previous_action_index) {
+        return;
+    }
+
+    if (((previous_action_index == 0U) || (previous_action_index == 3U)) && has_line) {
+        line_indicator_notify_edge(&line_indicator, now_ms);
+    } else if (((previous_action_index == 1U) || (previous_action_index == 4U)) &&
+               !has_line && !track_exit_led_fired) {
+        track_exit_led_fired = true;
+        line_indicator_notify_edge(&line_indicator, now_ms);
+    }
+}
 static void handle_observation(const artemis_observation_t *observation, uint32_t now_ms)
 {
     /* 每收到 STARTED/OBS 中的一帧观测，就推进一次任务并回一条 STEP。 */
+    const uint8_t previous_action_index = mission.action_index;
     const artemis_control_command_t command = artemis_mission_step(&mission, observation);
     int length;
 
-    line_indicator_update(
-        &line_indicator,
-        observation->digital_values,
-        observation->digital_count,
-        now_ms);
+    update_line_indicator_from_mission(previous_action_index, observation, now_ms);
     if (command.completed) {
         send_stop(now_ms);
         return;
@@ -127,6 +195,8 @@ static void handle_response(const artemis_response_t *response, uint32_t now_ms)
             /* STARTED 自带第一帧观测，握手成功后立即进入正式任务。 */
             if (app_state == APP_WAIT_STARTED) {
                 artemis_mission_reset(&mission);
+                artemis_mission_set_task(&mission, selected_task);
+                artemis_ui_show(selected_task, ARTEMIS_UI_STATE_RUNNING);
                 handle_observation(&response->observation, now_ms);
             }
             break;
@@ -140,6 +210,7 @@ static void handle_response(const artemis_response_t *response, uint32_t now_ms)
             break;
         case ARTEMIS_RESPONSE_FINISHED:
             app_state = APP_DONE;
+            artemis_ui_show(selected_task, ARTEMIS_UI_STATE_DONE);
             break;
         case ARTEMIS_RESPONSE_ERROR:
         default:
@@ -176,6 +247,32 @@ static void update_led(uint32_t now_ms)
     }
 }
 
+static void toggle_selected_task(void)
+{
+    selected_task = selected_task == ARTEMIS_TASK_ID_2
+        ? ARTEMIS_TASK_ID_3
+        : ARTEMIS_TASK_ID_2;
+    artemis_mission_set_task(&mission, selected_task);
+    artemis_ui_show(selected_task, ARTEMIS_UI_STATE_MENU);
+}
+
+static void handle_ui(uint32_t now_ms)
+{
+    const artemis_ui_event_t event = artemis_ui_poll(now_ms);
+
+    if ((app_state != APP_MENU) && (app_state != APP_DONE)) {
+        return;
+    }
+    if (event.key0_pressed) {
+        toggle_selected_task();
+    }
+    if (event.key1_pressed) {
+        app_state = APP_RETRY_START;
+        app_deadline_ms = now_ms;
+        artemis_ui_show(selected_task, ARTEMIS_UI_STATE_STARTING);
+    }
+}
+
 int main(void)
 {
     /* 初始化硬件、串口、1ms SysTick，然后进入无 RTOS 主循环。 */
@@ -187,14 +284,18 @@ int main(void)
         }
     }
     artemis_mission_reset(&mission);
+    artemis_mission_set_task(&mission, selected_task);
     line_indicator_reset(&line_indicator);
-    app_state = APP_RETRY_START;
-    app_deadline_ms = system_millis;
+    app_state = APP_MENU;
+    app_deadline_ms = 0U;
+    artemis_ui_init();
+    artemis_ui_show(selected_task, ARTEMIS_UI_STATE_MENU);
 
     while (1) {
         const uint32_t now_ms = system_millis;
 
         update_led(now_ms);
+        handle_ui(now_ms);
         /* 先处理桥接软件响应，再检查状态机超时。 */
         if (uart_link_read_line(app_input_buffer, sizeof(app_input_buffer))) {
             if (artemis_protocol_parse_config_command(app_input_buffer, &app_config_command)) {
@@ -202,10 +303,12 @@ int main(void)
             } else if (artemis_protocol_is_config_command(app_input_buffer)) {
                 /* 调参命令格式错误时忽略，不打断正在运行的仿真会话。 */
             } else if (artemis_protocol_parse_response(app_input_buffer, &app_response)) {
-                handle_response(&app_response, now_ms);
+                if ((app_state != APP_MENU) && (app_state != APP_DONE)) {
+                    handle_response(&app_response, now_ms);
+                }
             } else if (app_state == APP_WAIT_STARTED) {
                 reset_runtime(now_ms);
-            } else {
+            } else if ((app_state != APP_MENU) && (app_state != APP_DONE)) {
                 stop_after_started_fault();
             }
         }
@@ -226,3 +329,4 @@ void SysTick_Handler(void)
 {
     system_millis++;
 }
+

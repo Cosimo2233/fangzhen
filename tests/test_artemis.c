@@ -86,7 +86,7 @@ static void test_protocol(void)
     assert(artemis_protocol_format_start(output, sizeof(output)) > 0);
     assert(strcmp(
         output,
-        "START max_time_s=120 control_period_s=0.02 initial_progress_index=0\n") == 0);
+        "START max_time_s=600 control_period_s=0.02 initial_progress_index=0\n") == 0);
 
     assert(artemis_protocol_parse_config_command(
         "PARAM name=line_kp value=31.5", &config_command));
@@ -141,6 +141,9 @@ static void test_controllers(void)
 static void test_runtime_params(void)
 {
     artemis_line_controller_t original;
+    artemis_mission_t mission;
+    artemis_observation_t obs;
+    artemis_control_command_t command;
     const uint8_t right_line[8] = {0U, 0U, 0U, 0U, 0U, 0U, 1U, 1U};
     float before;
     float after;
@@ -155,6 +158,14 @@ static void test_runtime_params(void)
     assert(artemis_line_controller_scan(&original, right_line, 8U));
     after = fabsf(artemis_line_controller_compute_turn(&original, 7.0f));
     assert(after > before);
+
+    assert(artemis_runtime_param_set("drive_velocity", 9.0f));
+    artemis_mission_reset(&mission);
+    obs = observation(0U, 0.0f, 0.0f, "00000000");
+    command = artemis_mission_step(&mission, &obs);
+    assert_near(command.velocity, 9.0f, 0.0001f);
+    assert(command.rear_left_target_speed > 9.0f);
+
     artemis_runtime_params_reset();
 }
 
@@ -170,27 +181,27 @@ static void test_task3(void)
     artemis_mission_reset(&mission);
     obs = observation(sequence_id++, time_s, 0.0f, "00000000");
     command = artemis_mission_step(&mission, &obs);
-    assert_near(command.velocity, 7.0f, 0.0001f);
-    assert_near(command.turn, 1.894331217f, 0.00001f);
-    assert_near(command.rear_left_target_speed, 8.894330978f, 0.00001f);
-    assert_near(command.rear_right_target_speed, 5.105669022f, 0.00001f);
+    assert_near(command.velocity, 4.9f, 0.0001f);
+    assert_near(command.turn, 3.795691252f, 0.00001f);
+    assert_near(command.rear_left_target_speed, 8.695691109f, 0.00001f);
+    assert_near(command.rear_right_target_speed, 1.104308844f, 0.00001f);
     assert(mission.action_index == 0U);
 
     time_s += 0.02f;
     obs = observation(sequence_id++, time_s, -10.0f, "00110000");
     command = artemis_mission_step(&mission, &obs);
-    assert_near(command.turn, 1.882424474f, 0.00001f);
-    assert_near(command.rear_left_target_speed, 8.882424355f, 0.00001f);
-    assert_near(command.rear_right_target_speed, 5.117575645f, 0.00001f);
+    assert_near(command.turn, 3.291849136f, 0.00001f);
+    assert_near(command.rear_left_target_speed, 8.191848755f, 0.00001f);
+    assert_near(command.rear_right_target_speed, 1.608150959f, 0.00001f);
     assert(mission.action_index == 0U);
     time_s += 0.02f;
     obs = observation(sequence_id++, time_s, -15.0f, "00110000");
     command = artemis_mission_step(&mission, &obs);
     assert(mission.action_index == 1U);
-    assert_near(command.velocity, 7.0f, 0.0001f);
-    assert_near(command.turn, 2.279999971f, 0.00001f);
-    assert_near(command.rear_left_target_speed, 4.720000267f, 0.00001f);
-    assert_near(command.rear_right_target_speed, 9.279999733f, 0.00001f);
+    assert_near(command.velocity, 4.8f, 0.0001f);
+    assert_near(command.turn, 1.827725053f, 0.00001f);
+    assert_near(command.rear_left_target_speed, 2.972275257f, 0.00001f);
+    assert_near(command.rear_right_target_speed, 6.627725124f, 0.00001f);
     assert(mission.line_seen);
 
     for (index = 0U; index < 49U; index++) {
@@ -202,14 +213,14 @@ static void test_task3(void)
     time_s += 0.02f;
     obs = observation(sequence_id++, time_s, -20.0f, "00000000");
     command = artemis_mission_step(&mission, &obs);
-    assert(mission.action_index == 2U);
-    assert_near(command.velocity, 0.0f, 0.0001f);
+    assert(mission.action_index == 3U);
+    assert_near(command.velocity, 4.9f, 0.0001f);
 
     time_s += 1.21f;
     obs = observation(sequence_id++, time_s, -100.0f, "00000000");
     command = artemis_mission_step(&mission, &obs);
     assert(mission.action_index == 3U);
-    assert_near(command.velocity, 7.0f, 0.0001f);
+    assert_near(command.velocity, 4.9f, 0.0001f);
 
     time_s += 0.02f;
     obs = observation(sequence_id++, time_s, -120.0f, "00011000");
@@ -235,36 +246,90 @@ static void test_task3(void)
 #endif
 }
 
+static void test_task2_selection(void)
+{
+    artemis_mission_t mission;
+    artemis_observation_t obs;
+    artemis_control_command_t command;
+    uint32_t sequence_id;
+
+    artemis_mission_reset(&mission);
+    artemis_mission_set_task(&mission, ARTEMIS_TASK_ID_2);
+    assert(artemis_mission_get_task(&mission) == ARTEMIS_TASK_ID_2);
+
+    for (sequence_id = 0U; sequence_id < ARTEMIS_YAW_STABLE_FRAMES; sequence_id++) {
+        obs = observation(sequence_id, 0.02f * (float) sequence_id, 0.0f, "00000000");
+        obs.forward_distance_cm = 0.0f;
+        command = artemis_mission_step(&mission, &obs);
+    }
+    assert(mission.action_index == 1U);
+    assert_near(command.velocity, 4.9f, 0.0001f);
+    assert_near(command.turn, 0.0f, 0.0001f);
+
+    obs = observation(sequence_id++, 0.40f, 0.0f, "11111111");
+    obs.forward_distance_cm = ARTEMIS_TASK2_STRAIGHT_MIN_CM - 1.0f;
+    command = artemis_mission_step(&mission, &obs);
+    assert(mission.action_index == 1U);
+
+    obs = observation(sequence_id++, 0.42f, 0.0f, "00110000");
+    obs.forward_distance_cm = ARTEMIS_TASK2_STRAIGHT_MIN_CM + 1.0f;
+    command = artemis_mission_step(&mission, &obs);
+    assert(mission.action_index == 1U);
+
+    obs = observation(sequence_id++, 0.44f, 0.0f, "00110000");
+    obs.forward_distance_cm = ARTEMIS_TASK2_STRAIGHT_MIN_CM + 2.0f;
+    command = artemis_mission_step(&mission, &obs);
+    assert(mission.action_index == 2U);
+    assert_near(command.velocity, 4.8f, 0.0001f);
+    assert(mission.line_seen);
+}
+
 static void test_line_indicator(void)
 {
     line_indicator_t indicator;
     const uint8_t clear[8] = {0U};
     const uint8_t line[8] = {0U, 0U, 1U, 1U, 0U, 0U, 0U, 0U};
+    const uint8_t single_noise[8] = {0U, 0U, 1U, 0U, 0U, 0U, 0U, 0U};
+    unsigned int index;
 
     line_indicator_reset(&indicator);
-    line_indicator_update(&indicator, line, 8U, 0U);
-    assert(!line_indicator_is_on(&indicator));
-    line_indicator_update(&indicator, clear, 8U, 1U);
+    for (index = 0U; index < 8U; index++) {
+        line_indicator_update(&indicator, single_noise, 8U, index);
+    }
     assert(!line_indicator_is_on(&indicator));
 
     line_indicator_update(&indicator, line, 8U, 10U);
     line_indicator_update(&indicator, line, 8U, 11U);
+    assert(!line_indicator_is_on(&indicator));
+    line_indicator_update(&indicator, line, 8U, 12U);
     assert(line_indicator_is_on(&indicator));
     line_indicator_tick(&indicator, 510U);
     assert(line_indicator_is_on(&indicator));
 
-    line_indicator_update(&indicator, clear, 8U, 20U);
-    line_indicator_update(&indicator, clear, 8U, 21U);
+    for (index = 0U; index < (ARTEMIS_LED_EXIT_CONFIRM_FRAMES - 1U); index++) {
+        line_indicator_update(&indicator, clear, 8U, 20U + index);
+    }
+    assert(indicator.pending_pulses == 0U);
+    line_indicator_update(&indicator, line, 8U, 200U);
+    assert(indicator.pending_pulses == 0U);
+
+    for (index = 0U; index < ARTEMIS_LED_EXIT_CONFIRM_FRAMES; index++) {
+        line_indicator_update(&indicator, clear, 8U, 300U + index);
+    }
     assert(indicator.pending_pulses == 1U);
 
     line_indicator_tick(&indicator, 511U);
+    assert(line_indicator_is_on(&indicator));
+    line_indicator_tick(&indicator, 512U);
     assert(!line_indicator_is_on(&indicator));
     assert(indicator.phase == LINE_INDICATOR_GAP);
-    line_indicator_tick(&indicator, 610U);
-    assert(!line_indicator_is_on(&indicator));
     line_indicator_tick(&indicator, 611U);
+    assert(!line_indicator_is_on(&indicator));
+    line_indicator_tick(&indicator, 612U);
     assert(line_indicator_is_on(&indicator));
     line_indicator_tick(&indicator, 1111U);
+    assert(line_indicator_is_on(&indicator));
+    line_indicator_tick(&indicator, 1112U);
     assert(!line_indicator_is_on(&indicator));
     assert(indicator.phase == LINE_INDICATOR_IDLE);
 }
@@ -275,6 +340,7 @@ int main(void)
     test_controllers();
     test_runtime_params();
     test_task3();
+    test_task2_selection();
     test_line_indicator();
     puts("All Artemis firmware host tests passed.");
     return 0;

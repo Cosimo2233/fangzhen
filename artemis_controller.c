@@ -7,6 +7,7 @@
 #include "artemis_runtime_params.h"
 
 typedef enum {
+    ACTION_DRIVE_DISTANCE,
     ACTION_DRIVE_UNTIL_LINE,
     ACTION_TRACK_UNTIL_LOST,
     ACTION_TURN_SETTLE,
@@ -17,6 +18,7 @@ typedef struct {
     action_kind_t kind;
     float yaw_offset_deg;
     float velocity;
+    float min_distance_cm;
     float duration_s;
     float max_duration_s;
 } task_action_t;
@@ -31,12 +33,22 @@ typedef struct {
  * 6. 瀹屾垚浠诲姟
  */
 static const task_action_t task3_actions[] = {
-    {ACTION_DRIVE_UNTIL_LINE, -38.659808254090095f, 7.0f, 0.0f, 5.0f},
-    {ACTION_TRACK_UNTIL_LOST, 0.0f, 7.0f, 0.0f, 8.0f},
-    {ACTION_TURN_SETTLE, -141.3401917459099f, 0.0f, 1.2f, 0.0f},
-    {ACTION_DRIVE_UNTIL_LINE, -141.3401917459099f, 7.0f, 0.0f, 5.0f},
-    {ACTION_TRACK_UNTIL_LOST, 0.0f, 7.0f, 0.0f, 8.0f},
-    {ACTION_FINISH, 0.0f, 0.0f, 0.0f, 0.0f},
+    {ACTION_DRIVE_UNTIL_LINE, ARTEMIS_TASK_ENTRY_C_YAW_DEG, ARTEMIS_TASK_DRIVE_VELOCITY, 0.0f, 0.0f, ARTEMIS_TASK_DRIVE_MAX_S},
+    {ACTION_TRACK_UNTIL_LOST, 0.0f, ARTEMIS_TASK_TRACK_VELOCITY, 0.0f, 0.0f, ARTEMIS_TASK_TRACK_MAX_S},
+    {ACTION_TURN_SETTLE, ARTEMIS_TASK_ENTRY_D_YAW_DEG, 0.0f, 0.0f, ARTEMIS_TASK_TURN_SETTLE_S, 0.0f},
+    {ACTION_DRIVE_UNTIL_LINE, ARTEMIS_TASK_ENTRY_D_YAW_DEG, ARTEMIS_TASK_DRIVE_VELOCITY, 0.0f, 0.0f, ARTEMIS_TASK_DRIVE_MAX_S},
+    {ACTION_TRACK_UNTIL_LOST, 0.0f, ARTEMIS_TASK_TRACK_VELOCITY, 0.0f, 0.0f, ARTEMIS_TASK_TRACK_MAX_S},
+    {ACTION_FINISH, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+};
+
+static const task_action_t task2_actions[] = {
+    {ACTION_TURN_SETTLE, ARTEMIS_TASK2_AB_YAW_DEG, 0.0f, 0.0f, ARTEMIS_TASK2_ALIGN_MIN_S, ARTEMIS_TASK2_ALIGN_MAX_S},
+    {ACTION_DRIVE_UNTIL_LINE, ARTEMIS_TASK2_AB_YAW_DEG, ARTEMIS_TASK_DRIVE_VELOCITY, ARTEMIS_TASK2_STRAIGHT_MIN_CM, 0.0f, ARTEMIS_TASK_DRIVE_MAX_S},
+    {ACTION_TRACK_UNTIL_LOST, 0.0f, ARTEMIS_TASK_TRACK_VELOCITY, ARTEMIS_TASK2_ARC_MIN_CM, 0.0f, ARTEMIS_TASK_TRACK_MAX_S},
+    {ACTION_TURN_SETTLE, ARTEMIS_TASK2_CD_YAW_DEG, 0.0f, 0.0f, ARTEMIS_TASK2_ALIGN_MIN_S, ARTEMIS_TASK2_ALIGN_MAX_S},
+    {ACTION_DRIVE_UNTIL_LINE, ARTEMIS_TASK2_CD_YAW_DEG, ARTEMIS_TASK_DRIVE_VELOCITY, ARTEMIS_TASK2_STRAIGHT_MIN_CM, 0.0f, ARTEMIS_TASK_DRIVE_MAX_S},
+    {ACTION_TRACK_UNTIL_LOST, 0.0f, ARTEMIS_TASK_TRACK_VELOCITY, ARTEMIS_TASK2_ARC_MIN_CM, 0.0f, ARTEMIS_TASK_TRACK_MAX_S},
+    {ACTION_FINISH, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
 };
 
 /* 8 璺贰绾夸紶鎰熷櫒鐨勬í鍚戞潈閲嶏紝宸︿晶涓鸿礋锛屽彸渚т负姝ｏ紝涓棿娌℃湁 0 鏉冮噸銆?*/
@@ -96,6 +108,84 @@ static artemis_line_controller_mode_t configured_line_mode(void)
     return artemis_runtime_params_get()->line_pid_mode == ARTEMIS_LINE_PID_FUZZY
         ? ARTEMIS_LINE_CONTROLLER_FUZZY
         : ARTEMIS_LINE_CONTROLLER_ORIGINAL;
+}
+
+static const task_action_t *selected_actions(
+    artemis_task_id_t task_id,
+    size_t *action_count)
+{
+    if (task_id == ARTEMIS_TASK_ID_2) {
+        *action_count = sizeof(task2_actions) / sizeof(task2_actions[0]);
+        return task2_actions;
+    }
+    *action_count = sizeof(task3_actions) / sizeof(task3_actions[0]);
+    return task3_actions;
+}
+
+static task_action_t configured_action(artemis_task_id_t task_id, uint8_t action_index)
+{
+    size_t action_count = 0U;
+    const task_action_t *actions = selected_actions(task_id, &action_count);
+    task_action_t action = actions[action_index];
+    const artemis_runtime_params_t *params = artemis_runtime_params_get();
+
+    (void) action_count;
+    if (task_id == ARTEMIS_TASK_ID_3) {
+        switch (action_index) {
+            case 0U:
+                action.yaw_offset_deg = params->task_entry_c_yaw_deg;
+                action.velocity = params->task_drive_velocity;
+                action.max_duration_s = params->task_drive_max_s;
+                break;
+            case 1U:
+            case 4U:
+                action.velocity = params->task_track_velocity;
+                action.max_duration_s = params->task_track_max_s;
+                break;
+            case 2U:
+                action.yaw_offset_deg = params->task_entry_d_yaw_deg;
+                action.duration_s = params->task_turn_settle_s;
+                break;
+            case 3U:
+                action.yaw_offset_deg = params->task_entry_d_yaw_deg;
+                action.velocity = params->task_drive_velocity;
+                action.max_duration_s = params->task_drive_max_s;
+                break;
+            default:
+                break;
+        }
+        return action;
+    }
+
+    switch (action_index) {
+        case 0U:
+            action.yaw_offset_deg = params->task2_ab_yaw_deg;
+            break;
+        case 1U:
+            action.yaw_offset_deg = params->task2_ab_yaw_deg;
+            action.min_distance_cm = params->task2_straight_min_cm;
+            action.velocity = params->task_drive_velocity;
+            action.max_duration_s = params->task_drive_max_s;
+            break;
+        case 2U:
+        case 5U:
+            action.min_distance_cm = params->task2_arc_min_cm;
+            action.velocity = params->task_track_velocity;
+            action.max_duration_s = params->task_track_max_s;
+            break;
+        case 3U:
+            action.yaw_offset_deg = params->task2_cd_yaw_deg;
+            break;
+        case 4U:
+            action.yaw_offset_deg = params->task2_cd_yaw_deg;
+            action.min_distance_cm = params->task2_straight_min_cm;
+            action.velocity = params->task_drive_velocity;
+            action.max_duration_s = params->task_drive_max_s;
+            break;
+        default:
+            break;
+    }
+    return action;
 }
 
 void artemis_line_controller_init(
@@ -298,7 +388,7 @@ static void enter_action(artemis_mission_t *mission, const artemis_observation_t
     mission->line_seen = false;
     mission->action_started = true;
     artemis_line_controller_reset(&mission->line_controller);
-    mission->yaw_controller.stable_counter = 0U;
+    artemis_yaw_controller_reset(&mission->yaw_controller);
 }
 
 static void advance_action(artemis_mission_t *mission)
@@ -309,20 +399,28 @@ static void advance_action(artemis_mission_t *mission)
     mission->line_seen = false;
 }
 
+static uint32_t configured_repeat_count(const artemis_mission_t *mission)
+{
+    return artemis_mission_get_task(mission) == ARTEMIS_TASK_ID_2
+        ? (uint32_t) ARTEMIS_TASK2_REPEAT_COUNT
+        : (uint32_t) ARTEMIS_TASK3_REPEAT_COUNT;
+}
+
 static bool mission_should_repeat(artemis_mission_t *mission)
 {
-#if ARTEMIS_MISSION_REPEAT_COUNT == 0U
-    if (mission->lap_count < UINT16_MAX) {
-        mission->lap_count++;
+    const uint32_t repeat_count = configured_repeat_count(mission);
+
+    if (repeat_count == 0U) {
+        if (mission->lap_count < UINT16_MAX) {
+            mission->lap_count++;
+        }
+        return true;
     }
-    return true;
-#else
-    if ((uint32_t) mission->lap_count + 1U < (uint32_t) ARTEMIS_MISSION_REPEAT_COUNT) {
+    if ((uint32_t) mission->lap_count + 1U < repeat_count) {
         mission->lap_count++;
         return true;
     }
     return false;
-#endif
 }
 
 static void restart_mission_cycle(artemis_mission_t *mission)
@@ -341,15 +439,27 @@ static bool action_completed(
     const artemis_observation_t *observation)
 {
     const float elapsed = observation->sim_time_s - mission->action_started_at_s;
+    const float distance_cm = observation->forward_distance_cm - mission->distance_started_at_cm;
     const bool line_detected = any_line(observation);
 
-    /* 杞悜鍔ㄤ綔鎸夊浐瀹?settle 鏃堕棿缁撴潫锛屼笉渚濊禆鐪熷疄鐢垫満鍙嶉銆?*/
     if (action->kind == ACTION_TURN_SETTLE) {
-        return elapsed >= action->duration_s;
+        if ((action->duration_s <= 0.0f) && (action->max_duration_s <= 0.0f)) {
+            return true;
+        }
+        return ((elapsed >= action->duration_s) &&
+                (mission->yaw_controller.stable_counter >= ARTEMIS_YAW_STABLE_FRAMES)) ||
+            ((action->max_duration_s > 0.0f) && (elapsed >= action->max_duration_s));
+    }
+    if (action->kind == ACTION_DRIVE_DISTANCE) {
+        return (distance_cm >= action->min_distance_cm) ||
+            ((action->max_duration_s > 0.0f) && (elapsed >= action->max_duration_s));
     }
     if (action->kind == ACTION_DRIVE_UNTIL_LINE) {
         /* 鎵剧嚎闃舵瑕佹眰杩炵画澶氬抚瑙佺嚎锛岄伩鍏嶅崟甯у櫔澹板垏鎹㈠姩浣溿€?*/
-        mission->confirm_count = line_detected ? (uint16_t) (mission->confirm_count + 1U) : 0U;
+        mission->confirm_count =
+            (line_detected && (distance_cm >= action->min_distance_cm))
+                ? (uint16_t) (mission->confirm_count + 1U)
+                : 0U;
         return (mission->confirm_count >= ARTEMIS_LINE_CONFIRM_FRAMES) ||
             ((action->max_duration_s > 0.0f) && (elapsed >= action->max_duration_s));
     }
@@ -361,7 +471,9 @@ static bool action_completed(
         } else if (mission->confirm_count < UINT16_MAX) {
             mission->confirm_count++;
         }
-        return (mission->line_seen && (mission->confirm_count >= ARTEMIS_LINE_LOSS_FRAMES)) ||
+        return (mission->line_seen &&
+                (distance_cm >= action->min_distance_cm) &&
+                (mission->confirm_count >= ARTEMIS_LINE_LOSS_FRAMES)) ||
             ((action->max_duration_s > 0.0f) && (elapsed >= action->max_duration_s));
     }
     return false;
@@ -371,17 +483,36 @@ void artemis_mission_reset(artemis_mission_t *mission)
 {
     /* PID 妯″紡鍦ㄧ紪璇戞湡鐢?artemis_config.h 閫夋嫨銆?*/
     memset(mission, 0, sizeof(*mission));
+    mission->task_id = ARTEMIS_TASK_ID_3;
     artemis_line_controller_init(&mission->line_controller, configured_line_mode());
     artemis_yaw_controller_reset(&mission->yaw_controller);
+}
+
+void artemis_mission_set_task(artemis_mission_t *mission, artemis_task_id_t task_id)
+{
+    if ((task_id != ARTEMIS_TASK_ID_2) && (task_id != ARTEMIS_TASK_ID_3)) {
+        task_id = ARTEMIS_TASK_ID_3;
+    }
+    mission->task_id = task_id;
+}
+
+artemis_task_id_t artemis_mission_get_task(const artemis_mission_t *mission)
+{
+    if ((mission->task_id != ARTEMIS_TASK_ID_2) && (mission->task_id != ARTEMIS_TASK_ID_3)) {
+        return ARTEMIS_TASK_ID_3;
+    }
+    return mission->task_id;
 }
 
 artemis_control_command_t artemis_mission_step(
     artemis_mission_t *mission,
     const artemis_observation_t *observation)
 {
-    const size_t action_count = sizeof(task3_actions) / sizeof(task3_actions[0]);
+    size_t action_count = 0U;
+    const artemis_task_id_t task_id = artemis_mission_get_task(mission);
 
     mission->line_controller.mode = configured_line_mode();
+    (void) selected_actions(task_id, &action_count);
 
     /* 绗竴甯ц娴嬬殑 yaw 浣滀负浠诲姟鍩哄噯瑙掞紝鍔ㄤ綔琛ㄩ噷鐨勮搴︽槸鐩稿鍋忕Щ銆?*/
     if (!mission->base_yaw_valid) {
@@ -389,10 +520,10 @@ artemis_control_command_t artemis_mission_step(
         mission->base_yaw_valid = true;
     }
     while (mission->action_index < action_count) {
-        const task_action_t *action = &task3_actions[mission->action_index];
+        const task_action_t action = configured_action(task_id, mission->action_index);
         artemis_control_command_t command;
 
-        if (action->kind == ACTION_FINISH) {
+        if (action.kind == ACTION_FINISH) {
             if (mission_should_repeat(mission)) {
                 restart_mission_cycle(mission);
                 continue;
@@ -402,18 +533,19 @@ artemis_control_command_t artemis_mission_step(
         if (!mission->action_started) {
             enter_action(mission, observation);
         }
-        if (action->kind == ACTION_TRACK_UNTIL_LOST) {
-            command = track_command(mission, observation, action->velocity);
+        if (action.kind == ACTION_TRACK_UNTIL_LOST) {
+            command = track_command(mission, observation, action.velocity);
         } else {
             const float target_yaw =
-                wrap_target_deg(mission->base_yaw_deg + action->yaw_offset_deg);
+                wrap_target_deg(mission->base_yaw_deg + action.yaw_offset_deg);
             command = yaw_command(
                 mission,
                 observation,
                 target_yaw,
-                action->kind == ACTION_DRIVE_UNTIL_LINE ? action->velocity : 0.0f);
+                (action.kind == ACTION_DRIVE_UNTIL_LINE) ||
+                (action.kind == ACTION_DRIVE_DISTANCE) ? action.velocity : 0.0f);
         }
-        if (!action_completed(mission, action, observation)) {
+        if (!action_completed(mission, &action, observation)) {
             return command;
         }
         advance_action(mission);

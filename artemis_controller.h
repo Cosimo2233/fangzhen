@@ -12,6 +12,11 @@ typedef enum {
     ARTEMIS_LINE_CONTROLLER_FUZZY
 } artemis_line_controller_mode_t;
 
+typedef enum {
+    ARTEMIS_TASK_ID_2 = 2,
+    ARTEMIS_TASK_ID_3 = 3
+} artemis_task_id_t;
+
 /* 循迹控制器内部状态：保存当前线误差、上一帧误差和积分项。 */
 typedef struct {
     artemis_line_controller_mode_t mode;
@@ -33,6 +38,7 @@ typedef struct {
 typedef struct {
     artemis_line_controller_t line_controller;
     artemis_yaw_controller_t yaw_controller;
+    artemis_task_id_t task_id;
     float base_yaw_deg;
     float action_started_at_s;
     float distance_started_at_cm;
@@ -62,6 +68,8 @@ float artemis_yaw_controller_compute(
     bool *stable);
 
 void artemis_mission_reset(artemis_mission_t *mission);
+void artemis_mission_set_task(artemis_mission_t *mission, artemis_task_id_t task_id);
+artemis_task_id_t artemis_mission_get_task(const artemis_mission_t *mission);
 artemis_control_command_t artemis_mission_step(
     artemis_mission_t *mission,
     const artemis_observation_t *observation);

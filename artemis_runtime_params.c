@@ -31,6 +31,17 @@ static const artemis_runtime_params_t default_params = {
     ARTEMIS_LINE_FUZZY_KD_DELTA_GAIN,
     ARTEMIS_LINE_FUZZY_KI_BASE,
     ARTEMIS_LINE_FUZZY_INTEGRAL_LIMIT,
+    ARTEMIS_TASK_DRIVE_VELOCITY,
+    ARTEMIS_TASK_TRACK_VELOCITY,
+    ARTEMIS_TASK_ENTRY_C_YAW_DEG,
+    ARTEMIS_TASK_ENTRY_D_YAW_DEG,
+    ARTEMIS_TASK_TURN_SETTLE_S,
+    ARTEMIS_TASK_DRIVE_MAX_S,
+    ARTEMIS_TASK_TRACK_MAX_S,
+    ARTEMIS_TASK2_AB_YAW_DEG,
+    ARTEMIS_TASK2_CD_YAW_DEG,
+    ARTEMIS_TASK2_STRAIGHT_MIN_CM,
+    ARTEMIS_TASK2_ARC_MIN_CM,
 };
 
 static artemis_runtime_params_t runtime_params = {
@@ -58,6 +69,17 @@ static artemis_runtime_params_t runtime_params = {
     ARTEMIS_LINE_FUZZY_KD_DELTA_GAIN,
     ARTEMIS_LINE_FUZZY_KI_BASE,
     ARTEMIS_LINE_FUZZY_INTEGRAL_LIMIT,
+    ARTEMIS_TASK_DRIVE_VELOCITY,
+    ARTEMIS_TASK_TRACK_VELOCITY,
+    ARTEMIS_TASK_ENTRY_C_YAW_DEG,
+    ARTEMIS_TASK_ENTRY_D_YAW_DEG,
+    ARTEMIS_TASK_TURN_SETTLE_S,
+    ARTEMIS_TASK_DRIVE_MAX_S,
+    ARTEMIS_TASK_TRACK_MAX_S,
+    ARTEMIS_TASK2_AB_YAW_DEG,
+    ARTEMIS_TASK2_CD_YAW_DEG,
+    ARTEMIS_TASK2_STRAIGHT_MIN_CM,
+    ARTEMIS_TASK2_ARC_MIN_CM,
 };
 
 typedef struct {
@@ -112,6 +134,17 @@ bool artemis_runtime_param_set(const char *name, float value)
         {"fuzzy_kd_delta_gain", &runtime_params.line_fuzzy_kd_delta_gain},
         {"fuzzy_ki_base", &runtime_params.line_fuzzy_ki_base},
         {"fuzzy_integral_limit", &runtime_params.line_fuzzy_integral_limit},
+        {"drive_velocity", &runtime_params.task_drive_velocity},
+        {"track_velocity", &runtime_params.task_track_velocity},
+        {"entry_c_yaw_deg", &runtime_params.task_entry_c_yaw_deg},
+        {"entry_d_yaw_deg", &runtime_params.task_entry_d_yaw_deg},
+        {"turn_settle_s", &runtime_params.task_turn_settle_s},
+        {"drive_max_s", &runtime_params.task_drive_max_s},
+        {"track_max_s", &runtime_params.task_track_max_s},
+        {"task2_ab_yaw_deg", &runtime_params.task2_ab_yaw_deg},
+        {"task2_cd_yaw_deg", &runtime_params.task2_cd_yaw_deg},
+        {"task2_straight_min_cm", &runtime_params.task2_straight_min_cm},
+        {"task2_arc_min_cm", &runtime_params.task2_arc_min_cm},
     };
 
     if ((name == NULL) || !isfinite(value)) {

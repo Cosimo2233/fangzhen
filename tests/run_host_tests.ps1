@@ -5,6 +5,7 @@ $output = Join-Path $env:TEMP "artemis-firmware-host-tests.exe"
 $sources = @(
     (Join-Path $root "artemis_protocol.c"),
     (Join-Path $root "artemis_controller.c"),
+    (Join-Path $root "artemis_runtime_params.c"),
     (Join-Path $root "line_indicator.c"),
     (Join-Path $PSScriptRoot "test_artemis.c")
 )

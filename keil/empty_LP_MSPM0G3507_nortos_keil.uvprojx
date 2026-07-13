@@ -410,6 +410,16 @@
               <FilePath>../line_indicator.c</FilePath>
             </File>
             <File>
+              <FileName>artemis_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../artemis_ui.c</FilePath>
+            </File>
+            <File>
+              <FileName>oled_hardware_i2c.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../oled_hardware_i2c.c</FilePath>
+            </File>
+            <File>
               <FileName>uart_link.c</FileName>
               <FileType>1</FileType>
               <FilePath>../uart_link.c</FilePath>

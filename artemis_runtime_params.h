@@ -30,6 +30,17 @@ typedef struct {
     float line_fuzzy_kd_delta_gain;
     float line_fuzzy_ki_base;
     float line_fuzzy_integral_limit;
+    float task_drive_velocity;
+    float task_track_velocity;
+    float task_entry_c_yaw_deg;
+    float task_entry_d_yaw_deg;
+    float task_turn_settle_s;
+    float task_drive_max_s;
+    float task_track_max_s;
+    float task2_ab_yaw_deg;
+    float task2_cd_yaw_deg;
+    float task2_straight_min_cm;
+    float task2_arc_min_cm;
 } artemis_runtime_params_t;
 
 const artemis_runtime_params_t *artemis_runtime_params_get(void);

@@ -11,6 +11,9 @@
  */
 const GPIO   = scripting.addModule("/ti/driverlib/GPIO", {}, false);
 const GPIO1  = GPIO.addInstance();
+const GPIO2  = GPIO.addInstance();
+const I2C    = scripting.addModule("/ti/driverlib/I2C", {}, false);
+const I2C1   = I2C.addInstance();
 const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
 const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1  = UART.addInstance();
@@ -22,6 +25,34 @@ GPIO1.$name                          = "LED";
 GPIO1.associatedPins[0].$name        = "PIN_0";
 GPIO1.associatedPins[0].assignedPort = "PORTA";
 GPIO1.associatedPins[0].assignedPin  = "14";
+
+GPIO2.$name                          = "GPIO_KEYS";
+GPIO2.associatedPins.create(2);
+GPIO2.associatedPins[0].assignedPort = "PORTA";
+GPIO2.associatedPins[0].direction    = "INPUT";
+GPIO2.associatedPins[0].assignedPin  = "13";
+GPIO2.associatedPins[0].$name        = "PIN_KEY_0";
+GPIO2.associatedPins[0].pin.$assign  = "PA13";
+GPIO2.associatedPins[1].assignedPort = "PORTA";
+GPIO2.associatedPins[1].direction    = "INPUT";
+GPIO2.associatedPins[1].assignedPin  = "12";
+GPIO2.associatedPins[1].$name        = "PIN_KEY_1";
+GPIO2.associatedPins[1].pin.$assign  = "PA12";
+
+I2C1.$name                             = "I2C_OLED";
+I2C1.basicEnableController             = true;
+I2C1.basicControllerStandardBusSpeed   = "Fast";
+I2C1.peripheral.$assign                = "I2C0";
+I2C1.peripheral.sdaPin.$assign         = "PA0";
+I2C1.peripheral.sclPin.$assign         = "PA1";
+I2C1.sdaPinConfig.hideOutputInversion  = scripting.forceWrite(false);
+I2C1.sdaPinConfig.onlyInternalResistor = scripting.forceWrite(false);
+I2C1.sdaPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
+I2C1.sdaPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric0";
+I2C1.sclPinConfig.hideOutputInversion  = scripting.forceWrite(false);
+I2C1.sclPinConfig.onlyInternalResistor = scripting.forceWrite(false);
+I2C1.sclPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
+I2C1.sclPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric1";
 
 UART1.$name                    = "UART_0";
 UART1.targetBaudRate           = 115200;
@@ -42,6 +73,11 @@ SYSCTL.forceDefaultClkConfig = true;
  * re-solve from scratch.
  */
 GPIO1.associatedPins[0].pin.$suggestSolution = "PA14";
+GPIO2.associatedPins[0].pin.$suggestSolution = "PA13";
+GPIO2.associatedPins[1].pin.$suggestSolution = "PA12";
+I2C1.peripheral.$suggestSolution             = "I2C0";
+I2C1.peripheral.sclPin.$suggestSolution      = "PA1";
+I2C1.peripheral.sdaPin.$suggestSolution      = "PA0";
 Board.peripheral.$suggestSolution            = "DEBUGSS";
 Board.peripheral.swclkPin.$suggestSolution   = "PA20";
 Board.peripheral.swdioPin.$suggestSolution   = "PA19";
